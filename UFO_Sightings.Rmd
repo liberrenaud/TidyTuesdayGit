@@ -1,0 +1,138 @@
+---
+title: "UFO_Sightings"
+author: "R.liber"
+date: "7/1/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# install.packages("DataExplorer")
+# install.packages("plotly")
+# install.packages("geojsonio")
+# installed.packages("rgeos")
+# install.packages("mapproj")
+# install.packages("openintro")
+install.packages("prophet")
+
+library(tidyverse)
+library(DataExplorer)
+library(plotly)
+library(geojsonio)
+library(rgeos)
+library(rgeos)
+library(broom)
+library(mapproj)
+library(openintro)
+library(tidyquant)
+theme_set(theme_tq())
+```
+
+
+
+```{r Import Data}
+
+ufo_sightings <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-06-25/ufo_sightings.csv")
+
+ufo_wrangled<- ufo_sightings %>% 
+  
+  mutate(date_time_2=mdy_hm(date_time) %>% date(),
+          month_yy=floor_date(date_time_2,"year"),
+         decade=round(lubridate::year(date_time_2)/10,0)*10,
+         decade=decade %>% as.factor()
+           )
+
+ufo_wrangled %>% 
+  glimpse
+
+```
+
+
+```{r}
+ufo_sightings %>% 
+  create_report()
+```
+
+
+
+#UFO sighthings through times
+
+```{r}
+ sighting_ts <- ufo_wrangled%>% 
+  group_by(month_yy) %>% 
+  summarise(n_sightings=n()) %>% 
+  ggplot(aes(month_yy,n_sightings)) +
+  geom_line(color="#18BC9C")+
+  labs(title = "UFO sightings through time")
+
+  
+ggplotly(sighting_ts)    
+
+```
+
+It seems that UFO sightings only really wend exponantial from year 1980/1990
+Diving into it further sightings really picked up in 1994 - year of the release of the "Roswell" TV serie
+
+Data does not seem to be available from 2014 onward
+
+
+```{r}
+
+ ufo_wrangled%>% 
+  group_by(decade) %>% 
+  summarise(n_sightings=n()) %>% 
+  ggplot(aes(decade,n_sightings)) +
+  geom_col(fill="#18BC9C")
+
+```
+
+As previously spotted, sightings of UFO really started/were only reported from year 2000s
+
+
+```{r Country were sightings happened}
+
+
+ ufo_wrangled%>% 
+  group_by(country) %>% 
+  summarise(n_sightings=n()) %>% 
+  mutate(country=country %>% replace_na("Not_Avail") %>% fct_reorder(n_sightings)) %>% 
+  ggplot(aes(country,n_sightings)) +
+  geom_col(fill="#18BC9C")+
+  coord_flip()
+
+
+```
+
+
+Only 5 countries are provided within this data set, for the next analysis we will focus on us only.
+
+
+```{r}
+hexbin_us <- ufo_wrangled %>% 
+  filter(country=="us",decade%in%c(2000,2010)) %>% 
+  group_by(state) %>% 
+  summarise(n_sightings=n()) %>% 
+  mutate(state=state %>% abbr2state())
+
+  spdf <- geojson_read("us_states_hexgrid.geojson",  what = "sp")
+  spdf@data = spdf@data %>% mutate(google_name = gsub(" \\(United States\\)", "", google_name))
+  
+spdf_fortified <- tidy(spdf, region = "google_name") %>% 
+  right_join(hexbin_us,by=c("id"="state"))
+  
+centers <- cbind.data.frame(data.frame(gCentroid(spdf, byid=TRUE), id=spdf@data$iso3166_2))
+
+
+ 
+# Now I can plot this shape easily as described before:
+ggplot() +
+  geom_polygon(data = spdf_fortified, aes(fill=n_sightings, x = long, y = lat, group = group), color="white") +
+  geom_text(data=centers, aes(x=x, y=y, label=id)) +
+  theme_void() +
+  coord_map()+
+  scale_fill_gradient(low = "lightgreen", high = "#18BC9C") 
+```
+
