@@ -1,0 +1,88 @@
+---
+title: "NFL Stadium Attendance"
+author: "Renaud Liber"
+date: "4-2-2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries}
+library(tidyverse)
+library(DataExplorer)
+library(ggridges)
+```
+
+```{r import data}
+attendance_raw <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-02-04/attendance.csv')
+standings <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-02-04/standings.csv')
+games <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-02-04/games.csv')
+
+```
+
+```{r}
+attendance <- attendance_raw %>% 
+mutate(team_name=as.factor(team_name))
+```
+
+
+# Data Quality Check
+
+Overall Data is pretty good at first glance with exception of attendance tbl which as some missing element (Weekly attendance - could it be that it was without public?)
+Tie as well is missing from Games detail but normal
+
+
+```{r Data Quality check}
+
+#Attendance
+attendance %>% glimpse()
+attendance %>% 
+  DataExplorer::plot_missing()
+
+
+standings %>% glimpse()
+standings %>% 
+  DataExplorer::plot_missing()
+
+
+games %>% glimpse()
+games %>% 
+  DataExplorer::plot_missing()
+
+```
+
+
+# How attendance as varied through time
+
+It seems that attendance was exponential from 2000 to 2007 but then dropped till 2010 to pick up again but dropped again in 2015.
+
+What explain the drops or peak in 2007 and 2016?
+What brought back a spike in 2010?
+
+```{r}
+
+attendance %>% 
+  group_by(year) %>% 
+  summarise(attendance=sum(weekly_attendance,na.rm = TRUE)) %>% 
+  ungroup() %>% 
+  ggplot(aes(year,attendance))+
+  geom_line()+
+  scale_y_continuous(labels=function(x) format(x, big.mark = ".", scientific = FALSE))
+
+```
+
+```{r}
+
+attendance %>% 
+  group_by(team_name,year) %>% 
+  summarise(attendance=sum(weekly_attendance,na.rm = TRUE)) %>% 
+  ungroup() %>% 
+  mutate(team_name=fct_reorder(team_name,attendance)) %>% 
+  ggplot(aes(team_name,attendance))+
+  geom_boxplot()+
+  coord_flip()
+  
+```
+

@@ -16,7 +16,7 @@ knitr::opts_chunk$set(echo = TRUE)
 # installed.packages("rgeos")
 # install.packages("mapproj")
 # install.packages("openintro")
-install.packages("prophet")
+# install.packages("prophet")
 
 library(tidyverse)
 library(DataExplorer)
@@ -29,6 +29,7 @@ library(mapproj)
 library(openintro)
 library(tidyquant)
 theme_set(theme_tq())
+library(lubridate)
 ```
 
 

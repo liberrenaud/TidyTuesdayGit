@@ -1,0 +1,126 @@
+---
+title: "2020-02-14-Hotel_Bookings"
+author: "Renaud Liber"
+date: "14-2-2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r load libraries}
+library(tidyverse)
+library(skimr)
+library(tsible)
+library(plotly)
+library(tidymodels)
+library(correlationfunnel)
+install.packages("tsibble")
+
+install.packages("recipes")
+
+
+theme_set(theme_light())
+```
+
+
+
+```{r import data}
+
+hotels_raw <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-02-11/hotels.csv') 
+```
+
+
+```{r}
+hotels <- hotels_raw %>% 
+  inner_join(maps::iso3166 %>% select(a3,ISOname),
+             by=c("country"="a3")) %>% 
+  mutate(ISOname=as_factor(ISOname))
+
+
+maps::iso3166 %>% 
+  filter(sovereignty %>% str_detect("Port"))
+
+```
+
+
+```{r EDA}
+
+hotels %>% skim()
+
+hotels %>% glimpse()
+
+```
+
+Number of visit linked to repeated guest represent only 3% of the total visit
+
++ depending on number of customer (if only a handful, it might be worthwhile to do some limited marketing campaign - but would not be a focus point)
+
+# 97% of the customers will come only once
+
+```{r}
+hotels %>% 
+  count(is_repeated_guest) %>% 
+  mutate(ratio=n/sum(n))
+
+```
+
+
+The dataset must be representing chains that are located in Portugal - 
+62% of the tourists are from the country
+
+```{r}
+p <- hotels %>% 
+  count(Visitor_Cntry=fct_lump(ISOname,10),sort = TRUE) %>% #Great trick to fct_lump quickly
+  mutate(Visitor_Cntry=fct_reorder(Visitor_Cntry,n),
+         label_text=str_glue("<b> Number of visitor : {n}</b>
+                       Share of the total visit : {scales::percent(n/sum(n))}"),
+         flag=if_else(Visitor_Cntry=="Portugal",TRUE,FALSE)) %>% 
+  ggplot(aes(Visitor_Cntry,n,fill=flag))+
+  geom_col()+
+  coord_flip()+
+  geom_col(aes(text=label_text)) +
+  labs(title = "Most of the visit are in country")
+
+p %>% 
+  ggplotly(tooltip ="text")
+
+  
+```
+
+
+#What correlate most to cancellation
+
+
+```{r}
+
+hotels %>% 
+  DataExplorer::plot_missing()
+
+```
+
+
+
+# can we predict likelyhood of cancelation
+
+We can see here the feature that correlate most to hotel cancellation. 
+Reservation status should be excluded from the Analysis
+
+
+
+```{r}
+
+hotels %>% 
+  select(-reservation_status_date) %>% 
+  filter(!is.na(children)) %>% 
+  binarize() %>% 
+  correlate(is_canceled__1) %>% 
+  correlationfunnel::plot_correlation_funnel()
+
+  
+
+
+```
+
