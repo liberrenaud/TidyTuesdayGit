@@ -1,0 +1,157 @@
+---
+title: "Spotify_songs"
+author: "Renaud Liber"
+date: "28-3-2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(tidyquant)
+library(tidymodels)
+```
+
+```{r}
+spotify_songs <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-01-21/spotify_songs.csv')
+```
+
+
+```{r}
+spotify_songs %>% 
+  head()
+
+spotify_songs %>% 
+  glimpse()
+
+```
+
+
+
+```{r}
+spotify_songs %>% 
+  ggplot(aes(track_popularity)) +
+  geom_bar()
+```
+
+We will filter the song that are equal to 0 as my end analysis will focus on songs that I would most likely like
+
+```{r}
+scored_songs <- spotify_songs %>% 
+  filter(track_popularity!=0)
+```
+
+# Let's do some EDA
+
+Who are the singer most popular
+
+```{r}
+scored_songs %>% 
+  group_by(track_artist) %>% 
+  summarise(avg_popularity=mean(track_popularity),
+            n_songs=n()) %>% 
+  arrange(-avg_popularity) %>% 
+  filter(n_songs>20)
+```
+What are the key styles of the artist
+
+```{r}
+
+artist_genre <- scored_songs %>% 
+  group_by(track_artist,playlist_genre) %>% 
+  summarise(count_genre=n()) %>% 
+  filter(count_genre>10)
+
+#Try new excel function- no luck
+
+# artist_genre %>% 
+#   pivot_table(.rows = track_artist,
+#               .columns = playlist_genre,
+#               .values = count_genre) %>% 
+#   kableExtra::kable()
+
+
+artist_style_tbl <- artist_genre %>% 
+  pivot_wider(names_from = playlist_genre,
+              values_from = count_genre,
+              values_fill = list(count_genre = 0))
+
+
+
+```
+
+Work on a creation of a matrix that will be used to segment/cluster group of artists
+
+```{r}
+
+
+mean_artist_genre <- artist_genre %>% 
+  left_join(scored_songs,
+            by = c("track_artist", "playlist_genre")) %>% 
+  group_by(track_artist,playlist_genre) %>% 
+  summarise(popularity=mean(track_popularity),
+            danceability=mean(danceability),
+            energy=mean(energy),
+            loudness=mean(loudness),
+            speechiness=mean(speechiness),
+            acousticness=mean(acousticness),
+            instrumentalness=mean(instrumentalness),
+            liveness=mean(liveness)) %>% 
+  pivot_longer(cols = c(3:10),
+               names_to="KPI",
+               values_to = "value") %>% 
+  unite(playlist_genre,KPI,col="KPI",sep="_") %>% 
+  spread(KPI,value = value,fill=0)
+
+```
+
+
+Group song characteristics and center and scale
+
+```{r}
+
+
+artist_matrix <- artist_style_tbl %>% 
+  right_join(mean_artist_genre,
+             by = "track_artist") 
+
+# Individual transformations for skewness and other issues
+# Discretize (if needed and if you have no other choice)
+# Create dummy variables
+# Create interactions
+# Normalization steps (center, scale, range, etc)
+# Multivariate transformation (e.g. PCA, spatial sign, etc)
+
+rec_obj <- recipe(~.,data = artist_matrix) %>% 
+  step_center(all_numeric()) %>% 
+  step_scale(all_numeric()) %>% 
+  prep()
+
+
+train_tbl <- bake(object = rec_obj,new_data = artist_matrix)
+
+```
+
+
+Prepare the Adjency matrix
+
+```{r}
+
+# Transpose Data to obtain artist similarity
+
+artist_correlation_matrix <- train_tbl %>% 
+  gather(key="Feature",value="value",-track_artist) %>% 
+  spread(track_artist,value=value) %>% 
+  select(-Feature) %>% 
+  as.matrix() %>% 
+  cor()
+
+
+artist_correlation_matrix %>% as_tibble(rownames="Artist")
+
+```
+
