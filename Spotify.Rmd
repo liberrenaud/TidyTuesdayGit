@@ -175,7 +175,7 @@ Prepare the Adjency matrix
 
 # Transpose Data to obtain artist similarity
 
-artist_correlation_matrix <- train_tbl %>% 
+artist_correlation_matrix_genre <- train_tbl %>% 
   select(-track_artist,-instrumentalness) %>% 
   gather(key="Feature",value="value",-Artist_genre) %>% 
   spread(Artist_genre,value=value) %>% 
@@ -183,20 +183,29 @@ artist_correlation_matrix <- train_tbl %>%
   as.matrix() %>% 
   cor()
 
+artist_correlation_matrix_no_genre <- train_tbl %>% 
+  select(-track_artist,-instrumentalness,-contains("playlist_genre")) %>% 
+  gather(key="Feature",value="value",-Artist_genre) %>% 
+  spread(Artist_genre,value=value) %>% 
+  select(-Feature) %>% 
+  as.matrix() %>% 
+  cor()
 
-artist_correlation_matrix %>% as_tibble(rownames="Artist_genre")
+
+
 
 ```
 
 Remove Customer that are equal to themselves
 
 ```{r}
-diag(artist_correlation_matrix) <- 0
+diag(artist_correlation_matrix_genre) <- 0
 ```
 
 Remove duplicate items (lower part of correlation_matrix)
 ```{r}
-artist_correlation_matrix[upper.tri(artist_correlation_matrix)] <- 0
+artist_correlation_matrix[upper.tri(artist_correlation_matrix_genre)] <- 0
+
 ```
 
 Prune Relationship
@@ -244,7 +253,13 @@ prep_corr_matrix <- function(correlation_matrix,edge_limit=0.8) {
 
 
 ```{r}
-prep_corr_matrix(artist_correlation_matrix,edge_limit = 0.85) %>% 
+prep_corr_matrix(artist_correlation_matrix_no_genre,edge_limit = 0.85) %>% 
+select(-weight) %>% 
+  simpleNetwork()
+```
+
+```{r}
+prep_corr_matrix(artist_correlation_matrix_genre,edge_limit = 0.85) %>% 
 select(-weight) %>% 
   simpleNetwork()
 ```
@@ -252,8 +267,9 @@ select(-weight) %>%
 
 
 
+
 ```{r}
-artist_correlation_matrix %>%
+artist_correlation_matrix_no_genre %>%
   
   prep_corr_matrix(edge_limit = 0.87) %>%
   
@@ -272,8 +288,8 @@ artist_correlation_matrix %>%
 
 ```{r}
 
-artist_graph_tbl<- artist_correlation_matrix %>% 
-   prep_corr_matrix(edge_limit = 0.87) %>%
+artist_graph_tbl<- artist_correlation_matrix_no_genre %>% 
+   prep_corr_matrix(edge_limit = 0.84) %>%
     as_tbl_graph(directed = FALSE)
 
 ```
@@ -303,7 +319,7 @@ grouped_tbl_graph <- artist_graph_tbl %>%
     mutate(group = group_components()) %>%
     
     arrange(desc(neighbors)) %>%
-    mutate(group_lump = group %>% as_factor() %>% fct_lump(n = 5))
+    mutate(group_lump = group %>% as_factor() %>% fct_lump(n = 10))
 
 
 grouped_tbl_graph %>%
@@ -325,12 +341,12 @@ grouped_tbl_graph %>%
 ```{r}
 
 
-credit_card_group_tbl <- credit_card_tbl %>%
-    left_join(as_tibble(grouped_tbl_graph), by = c("CUST_ID" = "name")) %>%
-    select(group_lump, CUST_ID, everything()) %>%
+artist_group_tbl <- mean_artist_genre %>%
+    left_join(as_tibble(grouped_tbl_graph), by = c("Artist_genre" = "name")) %>%
+    select(group_lump, Artist_genre, everything()) %>%
     filter(!is.na(group_lump))
 
-credit_card_group_tbl %>% glimpse()
+artist_group_tbl %>% glimpse()
 
 
 plot_density_by <- function(data, col, group_focus = 1, ncol = 1) {
@@ -350,6 +366,12 @@ plot_density_by <- function(data, col, group_focus = 1, ncol = 1) {
         scale_fill_tq() +
         theme_tq()
 }
+
+
+
+
+artist_group_tbl %>% plot_density_by(speechiness, group_focus = 1)
+
 ```
 
 

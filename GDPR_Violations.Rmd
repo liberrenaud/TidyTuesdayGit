@@ -1,0 +1,116 @@
+---
+title: "GDPR fines"
+author: "Renaud Liber"
+date: "23-4-2020"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r libraries}
+
+
+library(tidytuesdayR)
+library(tidyverse)
+library(janitor)
+library(lubridate)
+library(anomalize)
+
+theme_set(theme_light())
+
+
+```
+
+
+
+```{r load data}
+
+tuesdata <- tidytuesdayR::tt_load(2020, week = 17)
+
+
+#Issue retrieving violation table - straight pull from Git
+violations_raw <- read_tsv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-04-21/gdpr_violations.tsv")
+
+
+
+violations_tbl <- violations_raw %>% 
+  mutate(date=lubridate::mdy(date),
+         threshold=if_else(price>1e7,"High fine","Normal fine"))
+
+glimpse(violations_tbl)
+
+```
+
+```{r}
+
+violations_tbl %>% 
+  count(name, sort = TRUE) %>% 
+  mutate(name=fct_reorder(name,n)) %>% 
+  ggplot(aes(name,n))+
+  geom_col()+
+  coord_flip()+
+  labs(title = "Number of GDRP fines since kick off in April 2020",
+       subtitle = "Spain has delivered most fine (3x times more than next country",
+       caption = "source : https://www.privacyaffairs.com/gdpr-fines/")
+
+```
+
+```{r}
+
+
+violations_tbl %>% 
+  ggplot(aes(price))+
+  geom_histogram()+
+  scale_x_log10(labels=scales::dollar_format(prefix = "€"))+
+  labs(title = "Distribution of the fines given so far",
+       subtitle = "Most of the fines are below the 100k€ threshold",
+       caption = "source : https://www.privacyaffairs.com/gdpr-fines/")
+```
+
+
+```{r}
+violations_tbl %>% 
+  count(type, sort = TRUE) %>% 
+  mutate(type=fct_reorder(type,n))
+```
+
+
+```{r}
+violations_tbl %>% 
+  mutate(date=lubridate::mdy(date),
+         date=lubridate::floor_date(date,"months")) %>% 
+  group_by(date) %>% 
+  summarise(n=n()) %>% 
+  ungroup() %>% 
+  filter(year(date)!=1970) %>% 
+  ggplot(aes(date,n))+
+  geom_line()+
+    labs(title = "Trend  of  fines given since GDPR kick off",
+       subtitle = "Fines reached around October/Novermber",
+       caption = "source : https://www.privacyaffairs.com/gdpr-fines/")
+```
+```{r}
+violations_tbl %>% 
+  group_by(name,threshold) %>% 
+  summarise(total=sum(price,na.rm = TRUE),
+            n_fines=n()) %>% 
+  ungroup() %>% 
+  mutate(avg_fine=total/n_fines) %>% 
+  arrange(desc(total))
+```
+```{r}
+violations_tbl %>% 
+  mutate(name=fct_reorder(name,price)) %>% 
+  ggplot(aes(name,price))+
+  geom_violin()+
+  geom_jitter(alpha=0.5,color="blue")+
+   scale_y_log10()+
+  coord_flip()+
+  labs(title = "Distribution of the fines given so far",
+       subtitle = "",
+       caption = "source : https://www.privacyaffairs.com/gdpr-fines/")
+
+```

@@ -1,0 +1,56 @@
+---
+title: "NFL stadium attendance"
+author: "Renaud Liber"
+date: "12-6-2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+#install.packages("ISOweek")
+
+library(tidyverse)
+library(timetk)
+library(ISOweek)
+library(plotly)
+library(tidyquant)
+
+
+interactive <- TRUE
+
+```
+
+
+```{r}
+
+tuesdata <- tidytuesdayR::tt_load(2020, week = 6)
+attendance_raw <- tuesdata$attendance
+
+```
+
+
+```{r}
+attendance <- attendance_raw %>% 
+  mutate(date=as.Date(paste(year, week, 1, sep="-"), "%Y-%U-%u"))
+
+```
+
+
+
+```{r}
+attendance %>%
+  filter(team_name=="Giants") %>% 
+  group_by(date) %>% 
+    summarise_by_time(
+    date, .by = "year",
+    weekly_attendance = SUM(weekly_attendance)
+  ) %>% 
+  plot_time_series(date, weekly_attendance,
+                   .interactive = interactive,
+                   .plotly_slider = TRUE)
+```
+
