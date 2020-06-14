@@ -1,0 +1,155 @@
+---
+title: "Broadway"
+author: "Renaud Liber"
+date: "29-4-2020"
+output: html_document
+---
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+devtools::install_github("thebioengineer/tidytuesdayR")
+```
+
+
+
+```{r libraries}
+
+library(tidytuesdayR)
+library(tidyverse)
+library(janitor)
+library(tidytext)
+library(patchwork)
+
+
+theme_set(theme_light())
+
+```
+
+
+
+```{r load data}
+
+tuesdata <- tidytuesdayR::tt_load(2020, week = 18)
+
+grosses_tbl <- tuesdata$grosses 
+
+
+```
+
+How many show
+
+```{r}
+
+show_summary <- grosses_tbl %>%  
+  group_by(show) %>% 
+  summarise(total_gross=sum(weekly_gross,na.rm = TRUE),
+            total_views=sum(seats_sold,na.rm = TRUE),
+            n_weeks_runing=n()) %>% 
+  mutate(avg_tickt_price=total_gross/total_views) %>% 
+  arrange(-total_gross)
+
+
+show_summary_head <- show_summary %>% 
+  head(9) %>% 
+  mutate(show=as_factor(show))
+  
+
+
+```
+
+Top 10 grossing show - what are the drivers
+
+```{r}
+
+show_summary %>% 
+  head(10) %>% 
+  pivot_longer(cols = 2:5,names_to = "kpi",values_to = "value") %>% 
+  ggplot(aes(reorder_within(show,value,kpi),value)) +
+  geom_col(aes(fill=show))+
+  facet_wrap(~kpi,scales = "free")+
+  coord_flip()+
+  labs(y="")+
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+  
+
+```
+
+Test_bar_chart
+
+```{r}
+
+show_summary_head %>%  
+  arrange(-total_gross) %>%
+  mutate(show=fct_reorder(show,total_gross)) %>% 
+  ggplot(aes(show,total_gross)) +
+  geom_col(aes(fill=show))+
+  coord_flip()
+
+```
+
+```{r set fill}
+# Assign each plot to a color scheme
+
+library(RColorBrewer)
+myColors <- brewer.pal(9,"Set1")
+names(myColors) <- levels(show_summary_head$show)
+colScale <- scale_fill_manual(name = "show",values = myColors)
+
+```
+
+
+
+```{r}
+
+data <- show_summary
+show_bar <- function(data, metric=total_gross) {
+  
+  data %>% 
+    arrange(-{{metric}}) %>%
+    mutate(show=fct_reorder(show,{{metric}})) %>% 
+    ggplot(aes(show,{{metric}})) +
+    geom_col(aes(fill=show))+
+    coord_flip()+
+    theme(axis.title.y=element_blank(),
+          axis.text.y=element_blank(),
+          axis.ticks.y=element_blank())+
+    colScale
+  
+}
+
+```
+
+```{r}
+
+g_gross <- show_summary_head %>% 
+  show_bar()+
+  theme(legend.position = "bottom")
+
+
+g_views <- show_summary_head %>% 
+  show_bar(metric = total_views)+ 
+  theme(legend.position = "none")
+
+g_running <- show_summary_head %>% 
+  show_bar(metric = n_weeks_runing)+ 
+  theme(legend.position = "none")
+
+
+g_avg_ticket_price <-show_summary_head %>% 
+  show_bar(metric = avg_tickt_price)+ 
+  theme(legend.position = "none")
+
+
+g_gross+g_views/g_running+g_avg_ticket_price
+
+patch <- g_views/g_running/g_avg_ticket_price
+
+g_gross + patch
+
+
+
+```
+

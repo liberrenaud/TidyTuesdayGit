@@ -1,0 +1,258 @@
+---
+title: "GDPR fines"
+author: "Renaud Liber"
+date: "23-4-2020"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r libraries}
+
+
+library(tidytuesdayR)
+library(tidyverse)
+library(janitor)
+library(lubridate)
+library(anomalize)
+library(plotly)
+library(widyr)
+library(tidytext)
+library(ggraph)
+library(igraph)
+
+
+theme_set(theme_light())
+
+
+```
+
+
+
+```{r load data}
+
+tuesdata <- tidytuesdayR::tt_load(2020, week = 22)
+boston_cocktails <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-05-26/boston_cocktails.csv')
+
+
+cocktails_raw <- tuesdata$cocktails
+
+```
+
+
+```{r}
+
+cocktails_raw %>% 
+  group_by(id_drink,drink) %>% 
+  summarise(n_ingredient=max(ingredient_number)) %>% 
+  arrange(-n_ingredient) %>% 
+  ggplot(aes(n_ingredient))+
+  geom_histogram(bins = 15)
+
+
+```
+
+```{r}
+individual=cocktails <- cocktails_raw %>% 
+  group_by(id_drink,drink,category) %>% 
+  summarise(n_ingredient=max(ingredient_number),
+            ingredients=nest(ingredient)) %>% 
+  ungroup() %>% 
+  arrange(-n_ingredient) 
+```
+
+
+```{r}
+cocktails_raw %>% 
+  filter(id_drink==13621)
+```
+
+```{r}
+
+cocktails_raw %>% 
+  distinct(category)
+
+
+```
+
+```{r}
+
+boston_cocktails %>% 
+  distinct(ingredient
+           )
+
+boston_cocktails %>% 
+  distinct(category)
+
+```
+
+```{r}
+
+
+clean_measure <- function(x){
+  case_when(x=="3/4"~ "0.75",
+            x=="1/2"~ "0.5",
+            x=="1/3"~ "0.33",
+            x=="1/4"~ "0.25",
+            x=="2/3"~ "0.66",
+            is.na(x)~ "0",
+         TRUE~x) %>% as.double()
+}
+
+```
+
+```{r} 
+boston_clean <- boston_cocktails %>% 
+  
+  # Clean the measure to have liquid and other element clean
+  mutate(liquid = case_when(measure %>% str_detect(" oz") ~ measure,
+                            TRUE ~ "0"),
+         liquid = liquid %>% str_remove(" oz")) %>% 
+  separate(liquid,c("measure1","measure2"),sep=" ",extra = "merge",remove = FALSE) %>% 
+  mutate(measure2=clean_measure(measure2) ,
+         measure1=clean_measure(measure1) ,
+         total_liquid_oz=(measure1+measure2)*29.5,
+         Other=if_else(total_liquid_oz==0,measure,"0")
+         ) %>% 
+  select(-measure,-liquid,-measure1,-measure2)%>% 
+  
+  #Ensure that rank is correct (which is not)
+  group_by(row_id,name,category) %>% 
+  mutate(validate_rank=order(order(total_liquid_oz,decreasing = TRUE))) %>% 
+  ungroup() %>% 
+  mutate(validation=ingredient_number==validate_rank) %>% 
+  
+  #Resetting the rank
+  
+  mutate(ingredient_number=validate_rank) %>% 
+  select(-validation,-validate_rank) %>% 
+  arrange(row_id,ingredient_number) %>% 
+  
+  # Creating main category of alcohol
+  
+  mutate(generic_ingredient=str_to_lower(ingredient),
+         generic_ingredient= case_when(generic_ingredient %>% str_detect("rum|rhum")~"rum",
+                                       generic_ingredient %>% str_detect("tequila")~"tequila",
+                                       generic_ingredient %>% str_detect("brandy")~"brandy",
+                                       generic_ingredient %>% str_detect("whiskey|whisky")~"whiskey",
+                                       generic_ingredient %>% str_detect("bourbon")~"bourbon",
+                                       generic_ingredient %>% str_detect("vodka")~"vodka",
+                                       generic_ingredient %>% str_detect("gin")~"gin",
+                                       generic_ingredient %>% str_detect("syrup")~"syrup",
+                                       generic_ingredient %>% str_detect("vermouth")~"vermouth",
+                                       TRUE                                ~ generic_ingredient),
+         generic_ingredient=generic_ingredient %>%
+           str_remove("juice of a|juice") %>% 
+           str_remove("fresh|old mr. boston") %>% 
+           str_trim() %>% 
+           str_to_title()
+  ) %>% 
+  select(ingredient,generic_ingredient,everything())
+
+
+```
+```{r}
+boston_clean %>% 
+  count(generic_ingredient,sort = TRUE)
+```
+
+  
+# What are the most common base element in Cocktail
+
+```{r}
+
+boston_clean %>% 
+  filter(ingredient_number==1) %>% 
+  count(ingredient,sort = TRUE) %>% 
+  top_n(10,n) %>% 
+  mutate(ingredient=fct_reorder(ingredient,n)) %>% 
+  ggplot(aes(x = ingredient,
+             y=n))+
+  geom_col()+
+  coord_flip()+
+  labs(title = "Ingredient most used in cocktails")
+
+```
+
+```{r}
+boston_clean %>% 
+  filter(ingredient_number==1) %>% 
+  count(generic_ingredient,sort = TRUE) %>% 
+  top_n(10,n) %>% 
+  mutate(generic_ingredient=fct_reorder(generic_ingredient,n)) %>% 
+  ggplot(aes(x = generic_ingredient,
+             y=n))+
+  geom_col()+
+  coord_flip()+
+  labs(title = "Main Ingredient most used in cocktails")
+```
+
+```{r}
+boston_clean %>% 
+  filter(ingredient_number==1) %>% 
+  count(generic_ingredient,sort = TRUE) %>% 
+  top_n(10,n) %>% 
+  mutate(generic_ingredient=fct_reorder(generic_ingredient,n)) %>% 
+  ggplot(aes(x = generic_ingredient,
+             y=n))+
+  geom_col()+
+  coord_flip()+
+  labs(title = "Ingredient most used in cocktails")
+```
+
+```{r}
+most_used_g <- boston_clean %>% 
+  filter(ingredient_number==1) %>% 
+  group_by(generic_ingredient) %>% 
+  mutate(n_repeat=n()) %>% 
+  ungroup() %>% 
+  mutate(generic_ingredient=fct_lump(generic_ingredient,n=10,w=n_repeat)) %>% 
+  group_by(generic_ingredient,category) %>% 
+  summarise(n=n(),
+            n_repeat=mean(n_repeat)) %>% 
+  ungroup() %>% 
+  mutate(generic_ingredient=fct_reorder(generic_ingredient,n_repeat)) %>% 
+  ggplot(aes(x = generic_ingredient,
+             y=n,
+             fill=category))+
+  geom_col()+
+  coord_flip()+
+  labs(title = "Main ingredient most used in cocktails")
+
+most_used_g %>% 
+  plotly::ggplotly()
+  
+```
+
+
+```{r}
+ingredients_summarized <- boston_clean %>%
+  group_by(name) %>%
+  mutate(percentile = row_number() / n()) %>%
+  group_by(ingredient) %>%
+  summarize(n = n(),
+            n_with_oz = sum(!is.na(total_liquid_oz)),
+            avg_position = mean(percentile),
+            avg_serving = mean(total_liquid_oz, na.rm = TRUE)) %>%
+  arrange(desc(n))
+```
+
+
+```{r}
+boston_clean %>% 
+  filter(total_liquid_oz!=0) %>% 
+  select(-ingredient_number,-ingredient,-Other) %>% 
+  distinct() %>%  
+  group_by(name,category,row_id,generic_ingredient) %>% 
+  summarise(total_liquid_oz=mean(total_liquid_oz)) %>% 
+  ungroup() %>% 
+  spread(key=generic_ingredient,
+         value = total_liquid_oz,
+         fill=0) %>% view()
+  
+  
+```
+
