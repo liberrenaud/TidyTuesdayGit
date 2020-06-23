@@ -1,0 +1,55 @@
+---
+title: "Caribou"
+author: "Renaud Liber"
+date: "23-6-2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+#install.packages("ggbeeswarm")
+
+
+library(tidytuesdayR)
+library(tidyverse)
+library(janitor)
+library(lubridate)
+library(ggbeeswarm)
+
+theme_set(theme_light())
+
+locations <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-06-23/locations.csv')
+
+
+```
+
+```{r}
+
+locations %>% 
+  count(animal_id) %>% 
+  arrange(-n)
+```
+
+How long time does Caribous have been most viewed?
+
+```{r}
+locations %>% 
+  group_by(animal_id) %>% 
+  summarise(min_date=min(timestamp),
+            max_date=max(timestamp)) %>% 
+  ungroup() %>% 
+  mutate(length=lubridate::interval(min_date, max_date) / years(1)) %>% 
+  separate(animal_id,c("region","id"),sep="_",remove=FALSE) %>% 
+  arrange(-length) %>% 
+  ggplot(aes(region,
+             length,
+             color=region))+
+  geom_violin()+
+  geom_beeswarm()
+
+```
+
