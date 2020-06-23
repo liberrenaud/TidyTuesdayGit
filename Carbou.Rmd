@@ -19,11 +19,17 @@ library(tidyverse)
 library(janitor)
 library(lubridate)
 library(ggbeeswarm)
+library(plotly)
+library(timetk)
+
+interactive <- TRUE
 
 theme_set(theme_light())
 
-locations <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-06-23/locations.csv')
+locations_raw <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-06-23/locations.csv')
 
+locations <- locations_raw %>% 
+  separate(animal_id,c("region"),sep="_",remove=FALSE)
 
 ```
 
@@ -37,19 +43,46 @@ locations %>%
 How long time does Caribous have been most viewed?
 
 ```{r}
-locations %>% 
-  group_by(animal_id) %>% 
+plot <- locations %>% 
+  group_by(animal_id,region) %>% 
   summarise(min_date=min(timestamp),
-            max_date=max(timestamp)) %>% 
+            max_date=max(timestamp),
+            sights=n()) %>% 
   ungroup() %>% 
   mutate(length=lubridate::interval(min_date, max_date) / years(1)) %>% 
-  separate(animal_id,c("region","id"),sep="_",remove=FALSE) %>% 
   arrange(-length) %>% 
   ggplot(aes(region,
              length,
-             color=region))+
+             color=region),
+         line=black)+
   geom_violin()+
-  geom_beeswarm()
+  geom_beeswarm(aes(size=sights),alpha=0.5)
+
+ggplotly(plot)
+
+
+```
+```{r}
+
+locations %>% 
+  group_by(region) %>% 
+  summarise(population=n_distinct(animal_id)) %>% 
+  mutate(region=fct_reorder(region, population)) %>% 
+  ggplot(aes(population,region,fill=region))+
+  geom_col()
+
+```
+
+```{r}
+locations %>% 
+  mutate(yyyy=as_date(timestamp) %>% floor_date('year') ) %>% 
+  group_by(region,yyyy) %>% 
+  summarise(population=n_distinct(animal_id)) %>% 
+  ungroup() %>% 
+  group_by(region) %>%
+  plot_time_series(yyyy, population,
+                   .facet_ncol = 2, .facet_scales = "free",
+                   .interactive = interactive)
 
 ```
 
