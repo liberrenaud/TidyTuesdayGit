@@ -1,0 +1,111 @@
+---
+title: "Marble Race"
+author: "Renaud Liber"
+date: "1-6-2020"
+output: html_document
+---
+
+```{r load libraries}
+
+#install_github("thebioengineer/tidytuesdayR")
+library(tidytuesdayR)
+library(tidyverse)
+library(DataExplorer)
+install.packages("tidyverse")
+theme_set(theme_light())
+
+```
+
+```{r}
+
+tuesdata <- tidytuesdayR::tt_load(2020, week = 23)
+marbles <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-06-02/marbles.csv') %>% 
+  mutate(date=lubridate::dmy(date))
+
+?read_csv
+
+```
+
+
+```{r}
+marbles %>% glimpse()
+```
+
+```{r}
+marbles %>% count(race)
+```
+```{r}
+marbles %>% count(team_name)
+```
+```{r}
+marbles %>% DataExplorer::create_report()
+```
+
+
+#From exploration with data it seems that there are two "types" of race in data set -
++ 1st round usually named with Q to define pole position
++ real race with R in race that will be the key element to focus on
+
+```{r}
+races_m <- marbles %>% 
+  filter(race %>% str_detect("R")) 
+
+pole_m <- marbles %>% 
+  filter(race %>% str_detect("Q")) 
+```
+
+Note that each teams has two marbles
+
+```{r}
+
+races_m %>% 
+  count(team_name,marble_name)
+```
+
+Which are the best teams
+
+```{r}
+
+races_m %>% 
+  group_by(team_name) %>% 
+  summarise(total_points=sum(points)) %>% 
+  ungroup() %>% 
+  mutate(team_name=fct_reorder(team_name,total_points)) %>% 
+  ggplot(aes(team_name,total_points))+
+  geom_col()+
+  coord_flip()
+```
+
+```{r}
+races_m %>% 
+  group_by(marble_name,team_name) %>% 
+  summarise(total_points=sum(points)) %>% 
+  ungroup() %>% 
+  mutate(marble_name=fct_reorder(marble_name,total_points)) %>% 
+  ggplot(aes(marble_name,total_points,fill=team_name))+
+  geom_col()+
+  coord_flip()
+```
+
+Define how much the pole position impacts the possibility of winning
+
+```{r}
+
+light_pole <- pole_m %>% 
+  mutate(pole=str_remove(pole,"P"),
+         race=str_replace(race,"Q"," ")) %>% 
+  select(team_name,race,marble_name,pole) 
+
+  
+light_race <- races_m %>% 
+  group_by(race) %>% 
+  mutate(rank=dense_rank((time_s))) %>% 
+  ungroup() %>% 
+  mutate(race=str_replace(race,"R"," ")) %>% 
+  select(team_name,race,marble_name,rank) 
+
+light_pole %>% 
+  left_join(light_race)
+
+```
+

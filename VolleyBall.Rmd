@@ -1,0 +1,59 @@
+---
+title: "VolleyBall"
+author: "Renaud Liber"
+date: "20-5-2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(scales)
+theme_set(theme_light())
+
+```
+
+```{r}
+
+tuesdata <- tidytuesdayR::tt_load('2020-05-19')
+
+vb_matches <- tuesdata$vb_matches
+
+```
+
+
+```{r}
+vb_matches %>% 
+  glimpse()
+```
+
+
+```{r}
+
+vb_long <- vb_matches %>% 
+  rename(w_p1_name=w_player1, w_p2_name=w_player2,
+         w_l1_name=l_player1, l_p2_name=l_player2) %>% 
+  mutate_at(vars(starts_with("w_"),
+                    starts_with("l_")) ,
+              as.character) %>% 
+  pivot_longer(col=c(starts_with("w_"),
+                    starts_with("l_"))) %>% 
+  separate(name,
+           c("winner_looser","player","name"),
+           sep="_",
+           extra="merge",
+           fill="right") %>% 
+  mutate(player=coalesce(player,"team"),
+         winner_looser=str_to_upper(winner_looser)) %>% 
+  pivot_wider(names_from = "name",values_from = "value")
+
+
+vb_long %>% 
+  distinct(name)
+
+```
+

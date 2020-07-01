@@ -1,0 +1,377 @@
+---
+title: "Spotify_songs"
+author: "Renaud Liber"
+date: "28-3-2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(tidyquant)
+
+library(tidymodels)
+
+
+library(tidygraph)
+library(ggraph)
+library(networkD3)
+library(DataExplorer)
+
+```
+
+```{r}
+spotify_songs <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-01-21/spotify_songs.csv')
+```
+
+
+```{r}
+spotify_songs %>% 
+  head()
+
+spotify_songs %>% 
+  glimpse()
+
+```
+
+
+
+```{r}
+spotify_songs %>% 
+  ggplot(aes(track_popularity)) +
+  geom_bar()
+```
+
+We will filter the song that are equal to 0 as my end analysis will focus on songs that I would most likely like
+
+```{r}
+scored_songs <- spotify_songs %>% 
+  filter(track_popularity!=0)
+```
+
+# Let's do some EDA
+
+Who are the singer most popular
+
+```{r}
+scored_songs %>% 
+  group_by(track_artist) %>% 
+  summarise(avg_popularity=mean(track_popularity),
+            n_songs=n()) %>% 
+  arrange(-avg_popularity) %>% 
+  filter(n_songs>20)
+```
+What are the key styles of the artist
+
+```{r}
+
+artist_genre <- scored_songs %>% 
+  group_by(track_artist,playlist_genre) %>% 
+  summarise(count_genre=n()) %>% 
+  filter(count_genre>10)
+
+#Try new excel function- no luck
+
+# artist_genre %>% 
+#   pivot_table(.rows = track_artist,
+#               .columns = playlist_genre,
+#               .values = count_genre) %>% 
+#   kableExtra::kable()
+
+
+artist_style_tbl <- artist_genre %>% 
+  pivot_wider(names_from = playlist_genre,
+              values_from = count_genre,
+              values_fill = list(count_genre = 0))
+
+
+
+```
+
+Work on a matrix that will be used to segment/cluster group of artists
+
+```{r}
+
+
+mean_artist_genre <- artist_genre %>% 
+  left_join(scored_songs,
+            by = c("track_artist", "playlist_genre")) %>% 
+  group_by(track_artist,playlist_genre) %>% 
+  summarise(popularity_mean=mean(track_popularity),
+            popularity_median=median(track_popularity),
+            danceability=mean(danceability),
+            energy=mean(energy),
+            loudness=mean(loudness),
+            speechiness=mean(speechiness),
+            acousticness=mean(acousticness),
+            instrumentalness=log(mean(instrumentalness)),
+            liveness=mean(liveness)) %>% 
+  arrange(-popularity_median) %>% 
+  unite(col="Artist_genre",track_artist,playlist_genre,remove=FALSE)
+
+```
+
+
+
+
+
+# EDA 
+
+```{r}
+
+mean_artist_genre %>% 
+  plot_histogram()
+
+
+mean_artist_genre %>% 
+  plot_missing()
+
+```
+
+
+Group song characteristics and center and scale
+Speechiness, instrumentalness, liveness should all be log transformed
+
+```{r}
+
+
+# artist_matrix <- artist_style_tbl %>% 
+#   right_join(mean_artist_genre,
+#              by = "track_artist") 
+
+# Individual transformations for skewness and other issues
+# Discretize (if needed and if you have no other choice)
+# Create dummy variables
+# Create interactions
+# Normalization steps (center, scale, range, etc)
+# Multivariate transformation (e.g. PCA, spatial sign, etc)
+
+rec_obj <- recipe(~.,data = mean_artist_genre) %>% 
+  
+  
+  #adress log scales
+  step_log(liveness,speechiness,acousticness) %>% 
+  
+  # Center and scale
+  step_center(all_numeric()) %>% 
+  step_scale(all_numeric()) %>% 
+  step_dummy(playlist_genre) %>% 
+  prep()
+
+
+train_tbl <- bake(object = rec_obj,new_data = mean_artist_genre)
+
+```
+
+# Adjancncy Matrix
+
+Prepare the Adjency matrix
+
+```{r}
+
+# Transpose Data to obtain artist similarity
+
+artist_correlation_matrix_genre <- train_tbl %>% 
+  select(-track_artist,-instrumentalness) %>% 
+  gather(key="Feature",value="value",-Artist_genre) %>% 
+  spread(Artist_genre,value=value) %>% 
+  select(-Feature) %>% 
+  as.matrix() %>% 
+  cor()
+
+artist_correlation_matrix_no_genre <- train_tbl %>% 
+  select(-track_artist,-instrumentalness,-contains("playlist_genre")) %>% 
+  gather(key="Feature",value="value",-Artist_genre) %>% 
+  spread(Artist_genre,value=value) %>% 
+  select(-Feature) %>% 
+  as.matrix() %>% 
+  cor()
+
+
+
+
+```
+
+Remove Customer that are equal to themselves
+
+```{r}
+diag(artist_correlation_matrix_genre) <- 0
+```
+
+Remove duplicate items (lower part of correlation_matrix)
+```{r}
+artist_correlation_matrix[upper.tri(artist_correlation_matrix_genre)] <- 0
+
+```
+
+Prune Relationship
+
+
+```{r}
+edge_limit <- 0.7
+
+artist_correlation_matrix[artist_correlation_matrix<edge_limit] <- 0
+artist_correlation_matrix %>% as_tibble(rownames="Artist")
+
+```
+
+
+```{r}
+artist_relationship_tbl <- artist_correlation_matrix %>% 
+  as_tibble(rownames = "from") %>% 
+  gather(key="to",value="weight",-from) %>% 
+  filter(weight>0)
+```
+
+
+# Recreate Worklfow as a function
+
+```{r}
+prep_corr_matrix <- function(correlation_matrix,edge_limit=0.8) {
+  
+  #Move Diag to 0
+  diag(correlation_matrix) <- 0
+  #Move Upper triangle to 0
+  correlation_matrix[upper.tri(correlation_matrix)] <- 0
+  #Move to 0 anything below edge limit 
+  correlation_matrix[correlation_matrix<edge_limit] <- 0
+  
+  #Transpose matrix to table move from wide to long
+  correlation_matrix %>% 
+  as_tibble(rownames = "from") %>% 
+  gather(key="to",value="weight",-from) %>% 
+  filter(weight>0)
+  
+}
+
+
+```
+
+
+```{r}
+prep_corr_matrix(artist_correlation_matrix_no_genre,edge_limit = 0.85) %>% 
+select(-weight) %>% 
+  simpleNetwork()
+```
+
+```{r}
+prep_corr_matrix(artist_correlation_matrix_genre,edge_limit = 0.85) %>% 
+select(-weight) %>% 
+  simpleNetwork()
+```
+
+
+
+
+
+```{r}
+artist_correlation_matrix_no_genre %>%
+  
+  prep_corr_matrix(edge_limit = 0.87) %>%
+  
+  as_tbl_graph(directed = FALSE) %>%
+  
+  ggraph(layout = "kk") +
+  geom_edge_link(alpha = 0.5, color = palette_light()["blue"]) +
+  geom_node_point(alpha = 0.5, color = palette_light()["blue"]) +
+  theme_graph(background = "white") 
+  
+
+```
+
+
+# Table Graph Manipulation
+
+```{r}
+
+artist_graph_tbl<- artist_correlation_matrix_no_genre %>% 
+   prep_corr_matrix(edge_limit = 0.84) %>%
+    as_tbl_graph(directed = FALSE)
+
+```
+
+ Rank the node - not sure how key is that?
+
+```{r}
+artist_graph_tbl %>% 
+  activate(nodes) %>% 
+  mutate(node_rank=node_rank_traveller()) %>% 
+  arrange(node_rank)
+
+
+```
+
+# 8.3 Grouping Nodes (Clustering)
+
+
+```{r}
+
+
+
+grouped_tbl_graph <- artist_graph_tbl %>%
+    activate(nodes) %>%
+    mutate(neighbors = centrality_degree()) %>%
+    
+    mutate(group = group_components()) %>%
+    
+    arrange(desc(neighbors)) %>%
+    mutate(group_lump = group %>% as_factor() %>% fct_lump(n = 10))
+
+
+grouped_tbl_graph %>%
+    ggraph(layout = "kk") +
+    geom_edge_link(alpha = 0.5) +
+    geom_node_point(aes(color = group_lump), alpha = 0.5, size = 3) +
+    
+    theme_graph() +
+    scale_color_tq(theme = "light") +
+    theme(legend.position = "bottom") +
+    labs(title = "Artist Network Detection")
+```
+
+
+# 9.0 COMMUNITY ANALYSIS ----
+# - Join Communities and Inspect Key Features
+
+
+```{r}
+
+
+artist_group_tbl <- mean_artist_genre %>%
+    left_join(as_tibble(grouped_tbl_graph), by = c("Artist_genre" = "name")) %>%
+    select(group_lump, Artist_genre, everything()) %>%
+    filter(!is.na(group_lump))
+
+artist_group_tbl %>% glimpse()
+
+
+plot_density_by <- function(data, col, group_focus = 1, ncol = 1) {
+    
+    col_expr <- enquo(col)
+    
+    data %>%
+        mutate(focus = as.character(group_lump)) %>%
+        select(focus, everything()) %>%
+        mutate(focus = ifelse(as.character(focus) == as.character(group_focus), 
+                                    "1", "Other")) %>%
+        mutate(focus = as.factor(focus)) %>%
+        
+        ggplot(aes(!! col_expr, fill = focus)) +
+        geom_density(alpha = 0.4) +
+        facet_wrap(~ focus, ncol = ncol) +
+        scale_fill_tq() +
+        theme_tq()
+}
+
+
+
+
+artist_group_tbl %>% plot_density_by(speechiness, group_focus = 1)
+
+```
+
+

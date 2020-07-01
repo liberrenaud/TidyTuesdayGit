@@ -1,0 +1,61 @@
+---
+title: "Rap Artists"
+author: "Renaud Liber"
+date: "14-4-2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries}
+library(tidytuesdayR)
+library(tidyverse)
+library(janitor)
+
+```
+
+
+```{r}
+polls_ranking <- tidytuesdayR::tt_load(2020, week = 16)
+
+
+polls_tbl <- polls_ranking$polls
+rankings_tbl <- polls_ranking$rankings
+
+
+spotify <- tidytuesdayR::tt_load(2020, week = 4)
+spotify_songs <- spotify$spotify_songs
+
+```
+
+
+```{r}
+glimpse(polls_tbl)
+glimpse(rankings_tbl)
+```
+
+
+Who are the top 10 songs according to the rankings
+
+```{r}
+
+
+rankings_tbl %>% 
+  arrange(-points)
+```
+
+
+# Let's see if we can retrieve for the top 10 songs the spotify data
+
+```{r}
+title_top_10 <- rankings_tbl %>% 
+  filter(ID<11) %>% 
+  select(title)
+
+title_top_10 %>% 
+  left_join(spotify_songs,by=c("title"="track_name")) %>% 
+  
+```
+
