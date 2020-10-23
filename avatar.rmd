@@ -1,0 +1,61 @@
+---
+title: "LastAirbender"
+author: "Renaud Liber"
+date: "22-8-2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#install.packages("tvthemes")
+
+```
+
+
+```{r}
+
+library(tidytuesdayR)
+library(tidyverse)
+library(janitor)
+library(tvthemes)
+
+theme_set(theme_light())
+
+tuesdata <- tidytuesdayR::tt_load(2020, week = 33)
+
+```
+
+```{r}
+avatar <- tuesdata$avatar
+```
+
+```{r}
+
+## ggplot theme
+theme_set( theme_avatar(title.font = "Slayer",
+               text.font = "Slayer",
+               title.size = 8,
+               subtitle.size = 8))
+```
+
+
+```{r}
+#avatar %>% view()
+
+avatar %>% group_by(book_num,chapter_num,book,chapter) %>% 
+  summarise(rating=mean(imdb_rating)) %>% 
+  ungroup() %>% 
+  ggplot(aes(book,rating)) +
+  geom_violin()+
+  geom_jitter()
+  
+```
+
+
+```{r}
+
+```
+

@@ -1,0 +1,95 @@
+---
+title: "Astronauts"
+author: "Renaud Liber"
+date: "24-7-2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+
+
+library(tidytuesdayR)
+library(tidyverse)
+library(janitor)
+library(tidymodels)
+library(baguette)
+
+theme_set(theme_light())
+
+tuesdata <- tidytuesdayR::tt_load(2020, week = 29)
+```
+
+```{r}
+astronauts_raw<- tuesdata$astronauts
+
+```
+
+
+```{r}
+astronauts_raw %>% 
+  select(name, sex, year_of_selection) %>%
+  distinct() %>%
+  mutate(decade = 10*( year_of_selection %/% 10)) %>%
+  count(decade, sex) %>%
+  group_by(decade) %>%
+  mutate(label = scales::percent(n / sum(n), accuracy = 1)) %>%
+  ungroup() %>%
+  ggplot(aes(decade, n, fill = sex)) +
+  geom_col(position = "dodge", colour = "black") +
+  geom_text(
+    aes(label = label),
+    size = 3,
+    vjust = 1.5,
+    position = position_dodge(10)
+  ) +
+  scale_fill_brewer(palette = "Pastel1")+
+  labs(title = "Females participation in outer space mission has increased over the decades.",
+       subtitle = "But we are not yet at parity level")
+
+  
+```
+
+
+```{r}
+astronauts_df <- astronauts_raw %>% 
+  select(name,mission_title,military_civilian,occupation,year_of_mission,in_orbit,hours_mission) %>% 
+  mutate(in_orbit= case_when(str_detect(in_orbit,"^Salyut")~"Salyut",
+                             str_detect(in_orbit,"^STS")~"STS",
+                             TRUE ~ "in_orbit"),
+         occupation=str_to_lower(occupation)) %>% 
+  filter(hours_mission>0) %>% 
+  mutate(hours_mission=log(hours_mission)) %>% 
+  na.omit()
+```
+
+```{r}
+set.seed(123)
+
+astronauts_split <- astronauts_df %>% initial_split(prop = .75,stata=hours_mission)
+astronauts_train <- training(astronauts_split)
+astronauts_test <- testing(astronauts_split)
+
+
+```
+
+
+```{r}
+astro_recipe <- recipe(hours_mission~., data = astronauts_train) %>% 
+  update_role(name,mission_title,new_role="id") %>% 
+  step_other(occupation,in_orbit) %>% 
+  step_dummy(all_nominal(),-has_role("id"))
+  
+```
+
+```{r}
+
+astro_wf <- workflow() %>% 
+  add_recipe(astro_recipe)
+```
+
+
