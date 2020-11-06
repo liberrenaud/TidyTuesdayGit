@@ -1,0 +1,93 @@
+---
+title: "Wind Turbines"
+author: "Renaud Liber"
+date: "6-11-2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r Load library & data}
+
+library(tidytuesdayR)
+library(tidyverse)
+library(janitor)
+library(plotly)
+library(tidymodels)
+library(modeltime)
+
+theme_set(theme_light())
+
+tuesdata <- tidytuesdayR::tt_load(2020, week = 44)
+```
+
+```{r}
+
+raw_turbine <- tuesdata$`wind-turbine`
+raw_turbine %>% glimpse()
+raw_turbine %>% view()
+
+```
+
+```{r}
+
+
+turbine_prepped <- raw_turbine %>% 
+  separate(commissioning_date,into=c("Y1","Y2","Y3"),sep="/") %>% 
+  mutate(year=case_when(!is.na(Y3)~Y3,
+                        !is.na(Y2)~Y2,
+                        TRUE~Y1) %>% as.integer())
+  
+```
+```{r}
+
+
+
+turbine_prepped %>% 
+  group_by(year) %>% 
+  summarise(turbine_rated_capacity_k_w=sum(turbine_rated_capacity_k_w ,na.rm = TRUE)) %>% 
+  mutate(cumul_sum=cumsum(turbine_rated_capacity_k_w)) %>% 
+  ggplot(aes(year,cumul_sum))+
+  geom_line()+
+  scale_y_continuous(labels = scales::label_number(scale = 1e-6, suffix = "M"))+
+  labs(title = "Cummulative total capacity of Canadian Wind Turbines")
+  
+
+```
+
+There are [12.4 millions](https://www150.statcan.gc.ca/n1/pub/11-402-x/2011000/chap/fam/fam-eng.htm) households in canada that consume in [11 135 KW per year](https://energyrates.ca/residential-electricity-natural-gas/#:~:text=Electricity%20Use%20at%20Home,kWh%20of%20electricity%20per%20year.)
+
+A turbine 1.5 MW power about [500](https://www.google.com/search?rlz=1C1GCEJ_enBE863BE864&sxsrf=ALeKk03bEOGdN3qbhbzBUEOdlkH6ZvKADw:1604672359616&q=How+much+energy+does+a+1.5+MW+wind+turbine+produce%3F&sa=X&ved=2ahUKEwjA3-avju7sAhXC-qQKHWCGAGAQzmd6BAgOEAk&biw=1536&bih=704&safe=active&ssui=on) homes per year.
+
+```{r}
+
+home_wind_powered <- turbine_prepped %>% 
+  mutate(home_powered=turbine_rated_capacity_k_w/1500*500) %>% 
+  group_by(year) %>% 
+  summarise(home_powered=sum(home_powered ,na.rm = TRUE)) %>% 
+  mutate(cumul_sum=cumsum(home_powered)) 
+
+home_powered_td <- max(home_wind_powered$cumul_sum)
+
+shape <- data.frame(
+  x=c(0,0,home_powered_td,home_powered_td)
+  y=c(2005,2015,2015,2015)
+)
+
+plot_home_wind <- home_wind_powered %>% 
+  ggplot(aes(year,cumul_sum))+
+  geom_rect(aes(xmin=2005, xmax=2015, ymin=0, ymax=Inf),alpha=0.5)+
+  geom_line()+
+  scale_y_continuous(labels = scales::label_number(scale = 1e-3, suffix = "K"))+
+  labs(title = "Canadian homes Wind Turbine")
+  
+  
+
+
+plot_home_wind %>% ggplotly()
+
+```
+
+
