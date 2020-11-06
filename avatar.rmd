@@ -3,6 +3,8 @@ title: "LastAirbender"
 author: "Renaud Liber"
 date: "22-8-2020"
 output: html_document
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -11,43 +13,61 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r}
 #install.packages("tvthemes")
+#install.packages("esquisse")
 
 ```
 
 
-```{r}
+```{r Load libraries}
 
 library(tidytuesdayR)
 library(tidyverse)
 library(janitor)
 library(tvthemes)
+library(tidytext)
 
-theme_set(theme_light())
-
-tuesdata <- tidytuesdayR::tt_load(2020, week = 33)
 
 ```
 
-```{r}
+```{r Load data}
+tuesdata <- tidytuesdayR::tt_load(2020, week = 33)
 avatar <- tuesdata$avatar
 ```
 
-```{r}
+```{r set plotting theme}
 
 ## ggplot theme
-theme_set( theme_avatar(title.font = "Slayer",
-               text.font = "Slayer",
-               title.size = 8,
+theme_set( theme_avatar(
+               # title.font = "Ink Free",
+               # text.font = "Ink Free",
+               title.size = 12,
                subtitle.size = 8))
 ```
 
 
-```{r}
+```{r Overview ratings}
 #avatar %>% view()
 
-avatar %>% group_by(book_num,chapter_num,book,chapter) %>% 
+library(ggplot2)
+
+
+ book_rating_plot<- avatar %>% group_by(book_num,chapter_num,book,chapter) %>% 
+  filter(!is.na(imdb_rating))%>% 
   summarise(rating=mean(imdb_rating)) %>% 
   ungroup() %>% 
+  unite(col="Book_chapter",c("book_num","chapter_num"),sep="_") %>% 
+  mutate(Book_chapter=as_factor(Book_chapter),
+         Book_chapter = factor(Book_chapter, levels = rev(levels(Book_chapter))))
+ 
+ 
+
+
+avatar %>% filter(is.na(imdb_rating))
+```
+
+
+```{r Rating violin distribution}
+book_rating_plot%>% 
   ggplot(aes(book,rating)) +
   geom_violin()+
   geom_jitter()
@@ -57,5 +77,57 @@ avatar %>% group_by(book_num,chapter_num,book,chapter) %>%
 
 ```{r}
 
+
+airbender_ratings <- ggplot(book_rating_plot) +
+ aes(Book_chapter, rating, fill = book) +
+ geom_col() +
+ scale_fill_hue() +
+ labs(x = "") +
+ coord_flip() 
+
+```
+
+```{r}
+airbender_ratings
+
+```
+
+```{r}
+avatar %>% glimpse()
+```
+
+# Who are the most common speakers
+
+```{r}
+
+avatar %>% 
+  count(character,sort =TRUE
+        )
+```
+
+```{r}
+avatar %>% 
+  filter(!is.na(character_words)) %>% 
+  mutate(book=fct_inorder(book),
+         character=fct_lump(character,n=10)
+         ) %>% 
+  count(book,character) %>% 
+  mutate(character=reorder_within(character,n,book)) %>% 
+  ggplot(aes(n,character,fill=book))+
+  geom_col()+ 
+  facet_wrap(~book,scales="free")+
+  labs()+
+  scale_y_reordered()+
+  scale_fill_manual(values=c(avatar_pal("WaterTribe")(1),
+                             avatar_pal("EarthKingdom")(2),
+                             avatar_pal("FireNation")(3)))
+```
+
+# Test modelling
+
+```{r}
+avatar_tbl <- avatar %>% 
+  filter(!is.na(character)) %>% 
+  mutate()
 ```
 
