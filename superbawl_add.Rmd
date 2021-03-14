@@ -1,0 +1,184 @@
+---
+title: "Plastic_Audit"
+author: "Renaud Liber"
+date: "1/31/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(tidyverse)
+library(tidytuesdayR)
+library(DataExplorer)
+library(ggthemr)
+library(tidymodels)
+
+#devtools::install_github('Mikata-Project/ggthemr')
+
+```
+
+
+
+```{r}
+tuesdata <- tidytuesdayR::tt_load(2021, week = 10)
+youtube  <- tuesdata$youtube
+
+ggthemr('fresh')
+
+```
+
+```{r}
+
+youtube_clean <- youtube %>% 
+  filter(!is.na(kind))
+
+
+
+youtube_clean %>% 
+  DataExplorer::create_report(output_file = "SuperBawl_like",
+                              y="view_count")
+
+youtube %>% plot_density()
+
+youtube_clean %>% DataExplorer::plot_missing()
+
+
+# need to log the view count (target)
+# need to filter out all video with Kind =="NA" as we do not have youtube stat (video not existing or terminated)
+
+youtube_clean <- youtube %>% 
+  filter(!is.na(kind))
+
+
+```
+
+
+
+```{r}
+youtube %>% 
+  count(brand,name = "AddCount") %>% 
+  mutate(brand=fct_reorder(brand,AddCount)) %>% 
+  ggplot(aes(AddCount,brand)) + 
+  geom_col()+
+  geom_text(aes(x=AddCount-2,label=AddCount),
+            colour="white",
+            fontface="bold")+
+  labs(title="Number of ads per Brands",
+       x="",
+       y="")
+
+```
+```{r}
+# Feature engineering
+
+# Scale log the target (count view)
+# Group the brand to keep only the top one
+
+ youtube_ml <- youtube_clean %>% 
+  select(view_count,year, 
+         brand,
+         funny:use_sex) %>% 
+  mutate(view_count=log(view_count))
+
+ rec_sup_bawl <- youtube_ml %>% 
+  recipe(view_count~.) %>% 
+  #step_discretize(year) %>% 
+  step_other(brand,threshold = 0.4) %>% 
+  step_dummy(brand)
+```
+
+
+```{r}
+# SPlit data 
+
+
+data_split <- youtube_ml %>% initial_split()
+
+train_data=training(data_split)
+test_data=testing(data_split)
+```
+
+
+```{r}
+
+# Creating a linear regression model
+lr_model <- 
+  linear_reg(mode = "regression") %>% 
+  set_engine("lm")
+
+
+view_count_wflw <- workflow() %>% 
+  add_model(lr_model) %>% 
+  add_recipe(rec_sup_bawl)
+```
+
+
+```{r}
+# Fitting model to training data
+
+view_count_fit <- fit(view_count_wflw,train_data)
+```
+
+
+```{r}
+
+# CHecking model results (which are pretty bad)
+results_test <- predict(view_count_fit,test_data) %>% 
+  bind_cols(test_data %>% 
+              select(view_count)) %>% 
+  mutate(across(.cols = everything(), .fns = ~exp(.)))
+
+
+results_test %>% mutate(diff=.pred-view_count)
+
+
+results_test %>%
+  rmse(truth = view_count, estimate = .pred)
+
+
+exp(2.799)
+
+
+
+```
+
+```{r}
+
+
+# Changing model to integrate random forest
+rf_model <- 
+  rand_forest(mode = "regression",mtry = 10,trees = 300) %>%
+  set_engine("ranger")
+
+
+rf_wfw <- view_count_wflw %>% 
+  update_model(rf_model)
+
+
+```
+
+```{r}
+
+# Checking results which are as well pretty bad
+
+rf_fitted <- fit(rf_wfw,train_data)
+
+
+
+results_rf <- predict(rf_fitted,test_data) %>% 
+  bind_cols(test_data %>% 
+              select(view_count)) %>% 
+  mutate(across(.cols = everything(), .fns = ~exp(.)))
+
+
+results_rf %>% mutate(diff=.pred-view_count)
+
+
+results_rf %>%
+  rmse(truth = view_count, estimate = .pred)
+```
+
